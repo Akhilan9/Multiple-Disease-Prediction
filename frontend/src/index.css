@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@theme {
+  --color-medical-blue: #0A2540;
+  --color-medical-light: #F8FAFC;
+  
+  /* Clinical Neutral Grey Palette (Obsidian & Slate) */
+  --color-netflix-bg: #121212;
+  --color-netflix-card: #1c1c1c;
+  --color-netflix-nav: #050505;
+  --color-netflix-border: #262626;
+}
+
+@layer base {
+  body {
+    @apply bg-medical-light text-medical-blue transition-colors duration-500 ease-in-out;
+  }
+  .dark body {
+    @apply bg-netflix-bg text-gray-100;
+  }
+  
+  /* Global Visibility Overrides for Dark Mode */
+  .dark, .dark * {
+    border-color: var(--color-netflix-border) !important;
+  }
+
+  .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+    color: #ffffff !important;
+  }
+  
+  .dark p, .dark span, .dark label, .dark div:not([class*="bg-"]):not([class*="text-"]) {
+    color: #d1d5db; /* Default muted light text */
+  }
+
+  .dark a {
+    color: #9ca3af;
+  }
+  .dark a:hover {
+    color: #ffffff !important;
+  }
+  
+  /* Specifically target blue/gray text utility classes that fail in dark mode */
+  .dark .text-blue-900, .dark .text-blue-800, .dark .text-blue-700, .dark .text-medical-blue {
+    color: #ffffff !important;
+  }
+  
+  .dark .text-gray-900, .dark .text-gray-800, .dark .text-gray-700 {
+    color: #f3f4f6 !important;
+  }
+  
+  .dark .text-gray-600, .dark .text-gray-500, .dark .text-gray-400 {
+    color: #9ca3af !important;
+  }
+
+  /* Success/Error/Warning Visibility Bumps */
+  .dark .text-blue-600, .dark .text-blue-500 { color: #60a5fa !important; }
+  .dark .text-red-600, .dark .text-red-500 { color: #f87171 !important; }
+  .dark .text-green-600, .dark .text-green-500 { color: #4ade80 !important; }
+  .dark .text-yellow-600, .dark .text-yellow-500 { color: #fbbf24 !important; }
+
+  /* Force background colors using internal tokens */
+  .dark .bg-white, .dark .bg-gray-50, .dark .bg-medical-light {
+    background-color: var(--color-netflix-card) !important;
+  }
+  .dark .bg-gray-100, .dark .bg-gray-200 {
+    background-color: var(--color-netflix-bg) !important;
+  }
+  .dark .border-gray-100, .dark .border-gray-200 {
+    border-color: var(--color-netflix-border) !important;
+  }
+
+  /* Form & Interactive Elements */
+  .dark input, .dark select, .dark textarea {
+    background-color: #0c0c0c !important;
+    color: #ffffff !important;
+    border-color: #333333 !important;
+  }
+  
+  .dark button:not(.bg-blue-600):not(.bg-red-600):not(.bg-green-600) {
+    background-color: #262626 !important;
+    color: #ffffff !important;
+  }
+
+  .dark .leaflet-tile-pane {
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+  }
+  .dark .leaflet-container {
+    background: #121212 !important;
+  }
+
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 10px;
+  }
+}
