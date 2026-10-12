@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Bell, Activity, AlertCircle, HeartPulse, Stethoscope, Droplet, User, Scale, Thermometer } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 const MetricCard = ({ title, value, subtext, icon: Icon, colorClass }) => (
   <div className="bg-white dark:bg-netflix-card p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-netflix-border flex items-center space-x-4 hover:shadow-md transition">
@@ -33,7 +34,7 @@ const Dashboard = () => {
 
   const fetchHistory = async (uid) => {
     try {
-      const response = await fetch(`http://localhost:8000/history/predict/${uid}`);
+      const response = await fetch(`${API_BASE_URL}/history/predict/${uid}`);
       if (response.ok) {
         const data = await response.json();
         if (data.length > 0) setHistory(data);

@@ -11,6 +11,7 @@ import Auth from './pages/Auth';
 import Locator from './pages/Locator';
 import Reminders from './pages/Reminders';
 import Profile from './pages/Profile';
+import { API_BASE_URL } from './config/api';
 
 // --- SYSTEM AUDIO BYPASS ENGINE ---
 let globalAudioCtx = null;
@@ -145,7 +146,7 @@ function App() {
 
       const checkReminders = async () => {
         try {
-          const res = await fetch(`http://localhost:8000/history/reminders/${currentUser.uid}`);
+          const res = await fetch(`${API_BASE_URL}/history/reminders/${currentUser.uid}`);
           if (!res.ok) return;
           const reminders = await res.json();
           

@@ -3,6 +3,7 @@ import Select from 'react-select';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import Speedometer from '../components/Speedometer';
+import { API_BASE_URL } from '../config/api';
 
 const SYMPTOM_OPTIONS = [
   { value: 'chest_pain', label: 'Chest Pain' },
@@ -51,7 +52,7 @@ const Predict = () => {
       setLoadingUser(false);
       if (u) {
         try {
-          const res = await fetch(`http://localhost:8000/profile/${u.uid}`);
+          const res = await fetch(`${API_BASE_URL}/profile/${u.uid}`);
           if (res.ok) {
             const profileData = await res.json();
                if (profileData && Object.keys(profileData).length > 0) {
@@ -146,7 +147,7 @@ const Predict = () => {
 
     try {
       // CONSOLIDATED PIPELINE: Backend now handles history save internally via user_id
-      const response = await fetch('http://localhost:8000/predict', {
+      const response = await fetch(`${API_BASE_URL}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -3,6 +3,7 @@ import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Save, UserCircle, Activity, Heart, Thermometer, Droplet, User, Scale } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../config/api';
 
 const Profile = () => {
   const [user, setUser] = useState(null);
@@ -29,7 +30,7 @@ const Profile = () => {
       setUser(u);
       if (u) {
         try {
-          const response = await fetch(`http://localhost:8000/profile/${u.uid}`);
+          const response = await fetch(`${API_BASE_URL}/profile/${u.uid}`);
           if (response.ok) {
             const data = await response.json();
             if (data && Object.keys(data).length > 0) {
@@ -60,7 +61,7 @@ const Profile = () => {
     setSaveSuccess(false);
     
     try {
-      const response = await fetch('http://localhost:8000/profile', {
+      const response = await fetch(`${API_BASE_URL}/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

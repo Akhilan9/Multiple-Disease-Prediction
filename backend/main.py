@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pickle
@@ -8,15 +8,28 @@ import asyncio
 import os
 import sqlite3
 import json
+import tempfile
+
+# Determine base paths robustly
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "disease_predictor.pkl")
+FEATURES_PATH = os.path.join(BASE_DIR, "models", "features.pkl")
+DB_PATH = os.getenv("DB_PATH", os.path.join(tempfile.gettempdir() if "VERCEL" in os.environ else BASE_DIR, "local_health.db"))
 
 # Create FastAPI app
 app = FastAPI(title="Disease Prediction API", version="1.0.0")
 
-# Setup CORS
+# Setup CORS with non-wildcard credentials support
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
+).split(",")
+parsed_origins = [o.strip() for o in ALLOWED_ORIGINS if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=parsed_origins if parsed_origins else ["*"],
+    allow_credentials=True if parsed_origins else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -24,23 +37,23 @@ app.add_middleware(
 # AI LLM Pipeline Init
 import google.generativeai as genai
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 try:
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    genai_model = genai.GenerativeModel('gemini-1.5-flash')
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key:
+        genai.configure(api_key=gemini_key)
+        genai_model = genai.GenerativeModel('gemini-1.5-flash')
+    else:
+        genai_model = None
 except Exception as e:
     print(f"Warning: Gemini API Key not found or invalid: {e}")
     genai_model = None
-
-# Load the ML model and features
-MODEL_PATH = "models/disease_predictor.pkl"
-FEATURES_PATH = "models/features.pkl"
 
 model = None
 features = []
 
 def init_db():
-    conn = sqlite3.connect('local_health.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS predictions (
@@ -80,6 +93,15 @@ def init_db():
             updated_at INTEGER
         )
     ''')
+    # Auto-migrate columns if table already existed with older schema
+    c.execute('PRAGMA table_info(profiles)')
+    existing_cols = [col[1] for col in c.fetchall()]
+    for col_name, col_type in [("cholesterol", "INTEGER"), ("heart_rate", "INTEGER"), ("smoking_status", "INTEGER")]:
+        if col_name not in existing_cols:
+            try:
+                c.execute(f"ALTER TABLE profiles ADD COLUMN {col_name} {col_type}")
+            except Exception:
+                pass
     conn.commit()
     conn.close()
 
@@ -87,7 +109,7 @@ def init_db():
 def load_model():
     global model, features
     
-    # Initialize standalone SQLite DB globally bypassing Google Cloud
+    # Initialize DB
     init_db()
     
     if os.path.exists(MODEL_PATH) and os.path.exists(FEATURES_PATH):
@@ -96,7 +118,7 @@ def load_model():
         with open(FEATURES_PATH, "rb") as f:
             features = pickle.load(f)
     else:
-        print("Warning: Model or features not found. Please run train_model.py.")
+        print(f"Warning: Model or features not found at {MODEL_PATH} / {FEATURES_PATH}. Please run train_model.py.")
 
 class PredictionRequest(BaseModel):
     age: float
@@ -136,7 +158,17 @@ def calculate_risk_level(confidence: float) -> str:
     else:
         return "High"
 
-@app.post("/predict", response_model=PredictionResponse)
+api_router = APIRouter()
+
+@api_router.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "model_loaded": model is not None,
+        "features_loaded": len(features) > 0
+    }
+
+@api_router.post("/predict", response_model=PredictionResponse)
 async def predict_disease(data: PredictionRequest):
     if not model:
         raise HTTPException(status_code=500, detail="Model is not loaded.")
@@ -188,11 +220,10 @@ async def predict_disease(data: PredictionRequest):
                  suggested_medicines = ["Aggressive Hydration", "Bed Rest", "Consult Remote Physician"]
         
         # INTERNAL PERSISTENCE CONSOLIDATION 
-        # Only save if userId is present - Save one network RTT!
         if data.user_id:
             try:
                 import time
-                conn = sqlite3.connect('local_health.db')
+                conn = sqlite3.connect(DB_PATH)
                 c = conn.cursor()
                 c.execute('''
                     INSERT INTO predictions (user_id, disease, confidence, risk_level, input_data, timestamp)
@@ -212,11 +243,6 @@ async def predict_disease(data: PredictionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# ==========================================================
-# SQLITE REST API CRUD - SECURE LOCAL DATABASES
-# ==========================================================
-
 class SavePredictionRequest(BaseModel):
     userId: str
     disease: str
@@ -225,9 +251,9 @@ class SavePredictionRequest(BaseModel):
     inputData: dict
     timestamp: int
 
-@app.post("/history/predict")
+@api_router.post("/history/predict")
 def save_prediction(data: SavePredictionRequest):
-    conn = sqlite3.connect('local_health.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
         INSERT INTO predictions (user_id, disease, confidence, risk_level, input_data, timestamp)
@@ -237,9 +263,9 @@ def save_prediction(data: SavePredictionRequest):
     conn.close()
     return {"status": "success"}
 
-@app.get("/history/predict/{uid}")
+@api_router.get("/history/predict/{uid}")
 def get_predictions(uid: str):
-    conn = sqlite3.connect('local_health.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT * FROM predictions WHERE user_id = ? ORDER BY timestamp DESC", (uid,))
@@ -267,9 +293,9 @@ class ReminderRequest(BaseModel):
     time: str
     timestamp: int
 
-@app.post("/history/reminders")
+@api_router.post("/history/reminders")
 def create_reminder(data: ReminderRequest):
-    conn = sqlite3.connect('local_health.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
         INSERT INTO reminders (user_id, medicine_name, dosage, frequency, time, timestamp)
@@ -280,9 +306,9 @@ def create_reminder(data: ReminderRequest):
     conn.close()
     return {"status": "success", "id": str(new_id)}
 
-@app.get("/history/reminders/{uid}")
+@api_router.get("/history/reminders/{uid}")
 def get_reminders(uid: str):
-    conn = sqlite3.connect('local_health.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT * FROM reminders WHERE user_id = ? ORDER BY timestamp DESC", (uid,))
@@ -302,9 +328,9 @@ def get_reminders(uid: str):
         })
     return results
 
-@app.put("/history/reminders/{rem_id}")
+@api_router.put("/history/reminders/{rem_id}")
 def update_reminder(rem_id: int, data: ReminderRequest):
-    conn = sqlite3.connect('local_health.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
         UPDATE reminders 
@@ -315,9 +341,6 @@ def update_reminder(rem_id: int, data: ReminderRequest):
     conn.close()
     return {"status": "success"}
 
-# ==========================================================
-# BIOLOGICAL PROFILE REST CRUD
-# ==========================================================
 class UserProfile(BaseModel):
     userId: str
     age: int
@@ -331,9 +354,9 @@ class UserProfile(BaseModel):
     heart_rate: int
     smoking_status: int
 
-@app.get("/profile/{uid}")
+@api_router.get("/profile/{uid}")
 def get_profile(uid: str):
-    conn = sqlite3.connect('local_health.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT * FROM profiles WHERE user_id = ?", (uid,))
@@ -356,10 +379,10 @@ def get_profile(uid: str):
         }
     return None
 
-@app.post("/profile")
+@api_router.post("/profile")
 def save_profile(data: UserProfile):
     import time
-    conn = sqlite3.connect('local_health.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
         INSERT OR REPLACE INTO profiles 
@@ -374,9 +397,17 @@ def save_profile(data: UserProfile):
     conn.close()
     return {"status": "success"}
 
+# Mount API router both with and without /api prefix
+# This guarantees that requests with or without /api reach the correct endpoint seamlessly
+app.include_router(api_router, prefix="/api")
+app.include_router(api_router)
+
 @app.get("/")
+@app.get("/api")
 def read_root():
-    return {"status": "Backend running globally disconnected from Firebase!"}
-
-# Artificial Intelligence Logic - System End
-
+    return {
+        "status": "HealthPredict API running",
+        "version": "1.0.0",
+        "health": "/health",
+        "api_health": "/api/health"
+    }

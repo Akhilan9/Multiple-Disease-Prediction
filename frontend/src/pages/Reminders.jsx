@@ -3,6 +3,7 @@ import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Plus, X, Check, Clock, Edit } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../config/api';
 
 const Reminders = () => {
   const [reminders, setReminders] = useState([]);
@@ -33,7 +34,7 @@ const Reminders = () => {
 
   const fetchReminders = async (uid) => {
     try {
-      const response = await fetch(`http://localhost:8000/history/reminders/${uid}`);
+      const response = await fetch(`${API_BASE_URL}/history/reminders/${uid}`);
       if (response.ok) {
         const data = await response.json();
         setReminders(data);
@@ -87,13 +88,13 @@ const Reminders = () => {
     // Localhost Fullstack Python SQLite Request
     try {
       if (currentEditingId) {
-        await fetch(`http://localhost:8000/history/reminders/${currentEditingId}`, {
+        await fetch(`${API_BASE_URL}/history/reminders/${currentEditingId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(reminderObj)
         });
       } else {
-        await fetch('http://localhost:8000/history/reminders', {
+        await fetch(`${API_BASE_URL}/history/reminders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(reminderObj)
